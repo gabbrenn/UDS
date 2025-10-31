@@ -185,15 +185,72 @@ UDS-ubuzima-digital-system/
 │   │
 │   ├── schemas/                # Data validation schemas
 │   │
-│   ├── pages/                  # HTML frontend files
-│   │   ├── auth-login.html
-│   │   ├── dashboard.html
-│   │   ├── admin-*.html        # Admin dashboards
-│   │   ├── hcp-index.html      # Healthcare provider
-│   │   ├── patient-index.html
-│   │   ├── pharmacist-index.html
-│   │   ├── laboratory-index.html
-│   │   └── ... (40+ pages)
+│   ├── pages/                  # HTML frontend pages (served as static files)
+│   │   ├── auth-login.html            # Login page
+│   │   ├── auth-register.html         # Registration page
+│   │   ├── auth-two-steps.html        # 2FA verification
+│   │   ├── dashboard.html             # Main dashboard
+│   │   │
+│   │   ├── admin-*.html               # Admin role pages
+│   │   │   ├── admin-index.html       # Admin dashboard
+│   │   │   ├── admin-employees.html   # Employee management
+│   │   │   ├── admin-departments.html
+│   │   │   ├── admin-medicines.html
+│   │   │   ├── admin-tests.html
+│   │   │   └── ... (15+ admin pages)
+│   │   │
+│   │   ├── hcp-index.html             # Healthcare Provider dashboard
+│   │   ├── patient-index.html         # Patient portal
+│   │   ├── pharmacist-index.html      # Pharmacist dashboard
+│   │   ├── receptionist-index.html    # Receptionist dashboard
+│   │   ├── laboratory-index.html      # Lab Scientist dashboard
+│   │   ├── cashier-index.html         # Cashier dashboard
+│   │   ├── insurance-index.html       # Insurance Manager dashboard
+│   │   ├── dg-index.html              # Director General dashboard
+│   │   ├── dof-index.html             # Director of Finance dashboard
+│   │   ├── ls-index.html              # Lab Scientist dashboard
+│   │   └── mohs-index.html            # MOHS (Ministry) dashboard
+│   │
+│   ├── resources/              # Static assets (CSS, JS, Images)
+│   │   ├── assets/
+│   │   │   ├── js/             # JavaScript files by role
+│   │   │   │   ├── components/ # Reusable UI components
+│   │   │   │   │   ├── viewsession.js        # Session viewer
+│   │   │   │   │   ├── createpatient.js      # Patient registration
+│   │   │   │   │   ├── createsession.js      # Session creation
+│   │   │   │   │   ├── searchpatient.js      # Patient search
+│   │   │   │   │   ├── hpsessions.js         # Hospital sessions list
+│   │   │   │   │   ├── patientsqueue.js      # Waiting queue
+│   │   │   │   │   ├── servedpatients.js     # Served patients
+│   │   │   │   │   ├── staffmyappointments.js
+│   │   │   │   │   ├── staffmysessions.js
+│   │   │   │   │   └── ... (form components)
+│   │   │   │   │
+│   │   │   │   ├── patient.js          # Patient role logic
+│   │   │   │   ├── hc_provider.js      # Healthcare provider logic
+│   │   │   │   ├── receptionist.js     # Receptionist logic
+│   │   │   │   ├── pharmacist.js       # Pharmacist logic
+│   │   │   │   ├── laboratory.js       # Lab scientist logic
+│   │   │   │   ├── cashier.js          # Cashier logic
+│   │   │   │   ├── admin.js            # Admin logic
+│   │   │   │   ├── insurance.js        # Insurance manager logic
+│   │   │   │   ├── login.controller.js # Login logic
+│   │   │   │   ├── signup.controller.js # Signup logic
+│   │   │   │   ├── nav.js              # Navigation & notifications
+│   │   │   │   ├── socket.js           # WebSocket client
+│   │   │   │   ├── config.js           # App configuration
+│   │   │   │   └── ... (60+ JS files)
+│   │   │   │
+│   │   │   ├── css/            # Stylesheets
+│   │   │   │   └── styling.css # Main stylesheet
+│   │   │   │
+│   │   │   ├── img/            # Images
+│   │   │   ├── svg/            # SVG icons
+│   │   │   ├── vendor/         # Third-party libraries
+│   │   │   ├── uploads/        # User-uploaded files
+│   │   │   └── json/           # JSON data files
+│   │   │
+│   │   └── css/                # Additional stylesheets
 │   │
 │   ├── templates/              # Email/SMS templates
 │   │
@@ -210,28 +267,12 @@ UDS-ubuzima-digital-system/
 │   ├── process/                # Background jobs
 │   │   └── process.controller.js
 │   │
-│   ├── resources/              # Static assets
-│   │
-│   └── utils/                  # Helper functions
-│
-├── public/                     # Publicly accessible files
-│   ├── admin/                  # Admin dashboard assets
-│   │   ├── asset/
-│   │   │   ├── js/             # JavaScript files
-│   │   │   │   ├── auth.js     # Authentication logic
-│   │   │   │   ├── api.js      # API wrapper
-│   │   │   │   └── ...
-│   │   │   ├── css/            # Stylesheets
-│   │   │   └── images/
-│   │   └── *.html
-│   │
-│   ├── patient/                # Patient portal assets
-│   ├── uploads/                # User-uploaded files
-│   └── ...
+│   └── utils/                  # Helper functions & utilities
 │
 ├── certificates/               # SSL/TLS certificates
 ├── AWS/                        # AWS deployment files
-└── fingerprint-sdk/            # Biometric integration
+├── fingerprint-sdk/            # Biometric integration
+└── screenshots/                # Application screenshots
 ```
 
 ---
@@ -268,6 +309,10 @@ const connection = mysql.createPool({
 // Registers middleware
 app.use(bodyParser.json());
 app.use(cors());
+
+// Serves static files from 'public' directory
+// Note: The 'public' folder doesn't exist in the file system
+// Instead, files are served from src/pages/ and src/resources/
 app.use(express.static('public'));
 
 // Mounts all routes
@@ -278,6 +323,18 @@ import "./src/events/notifications.listener.js";
 
 // Starts background processes
 import { weeklyProcess } from './src/process/process.controller.js';
+```
+
+**How Static Files are Served:**
+```javascript
+// When user requests: http://127.0.0.1:7000/patient-index.html
+// Express looks in 'public' directory (configured)
+// But actual files are in src/pages/patient-index.html
+
+// The routing is handled by:
+// 1. index.route.js for API endpoints
+// 2. express.static() for HTML/CSS/JS files
+// 3. page.controller.js for serving specific pages
 ```
 
 ### Controllers Layer
@@ -500,35 +557,670 @@ await query('DELETE FROM appointments WHERE id = ?', [appointmentId]);
 
 ### File Organization
 
+The frontend is organized by **user roles**, with each role having dedicated HTML pages and JavaScript files:
+
 ```
-public/
-├── admin/                      # Admin dashboard
-│   ├── dashboard.html
-│   ├── asset/
-│   │   ├── js/
-│   │   │   ├── auth.js         # Login/logout logic
-│   │   │   ├── api.js          # API wrapper functions
-│   │   │   ├── patients.js     # Patient management
-│   │   │   ├── sessions.js     # Session management
-│   │   │   └── ...
-│   │   └── css/
-│   └── *.html
+src/
+├── pages/                      # HTML Pages (Role-based)
+│   ├── Authentication Pages
+│   │   ├── auth-login.html
+│   │   ├── auth-register.html
+│   │   ├── auth-two-steps.html (2FA verification)
+│   │   ├── auth-forgot-password.html
+│   │   └── auth-reset-password.html
+│   │
+│   ├── Admin Pages (admin role)
+│   │   ├── admin-index.html         # Admin dashboard
+│   │   ├── admin-employees.html     # Manage staff
+│   │   ├── admin-departments.html   # Manage departments
+│   │   ├── admin-medicines.html     # Medicine catalog
+│   │   ├── admin-tests.html         # Test catalog
+│   │   ├── admin-services.html      # Service catalog
+│   │   ├── admin-equipments.html    # Equipment catalog
+│   │   ├── admin-operations.html    # Operations catalog
+│   │   ├── admin-diseases.html      # Disease catalog
+│   │   ├── admin-assurances.html    # Insurance companies
+│   │   ├── admin-health-posts.html  # Facilities management
+│   │   └── admin-profile.html       # Admin profile
+│   │
+│   ├── Healthcare Provider Pages (hc_provider role)
+│   │   └── hcp-index.html           # HCP dashboard
+│   │
+│   ├── Patient Pages (patient role)
+│   │   └── patient-index.html       # Patient portal
+│   │
+│   ├── Pharmacist Pages (pharmacist role)
+│   │   └── pharmacist-index.html    # Pharmacy dashboard
+│   │
+│   ├── Receptionist Pages (receptionist role)
+│   │   └── receptionist-index.html  # Reception dashboard
+│   │
+│   ├── Laboratory Pages (laboratory_scientist role)
+│   │   └── laboratory-index.html    # Lab dashboard
+│   │
+│   ├── Cashier Pages (cashier role)
+│   │   └── cashier-index.html       # Cashier dashboard
+│   │
+│   ├── Insurance Pages (assurance_manager role)
+│   │   └── insurance-index.html     # Insurance dashboard
+│   │
+│   ├── Director General Pages (dg role)
+│   │   └── dg-index.html            # DG dashboard
+│   │
+│   ├── Director of Finance Pages (dof role)
+│   │   └── dof-index.html           # DOF dashboard
+│   │
+│   └── MOHS Pages (mohs role)
+│       └── mohs-index.html          # Ministry dashboard
 │
-├── patient/                    # Patient portal
-│   ├── index.html
-│   ├── my-sessions.html
-│   └── asset/
-│
-└── shared/                     # Shared resources
-    ├── plugins/
-    └── utils/
+└── resources/assets/           # Static Assets
+    ├── js/                     # JavaScript (Role-based)
+    │   ├── Role-Specific Files
+    │   │   ├── patient.js           # Patient portal logic
+    │   │   ├── hc_provider.js       # HCP dashboard logic
+    │   │   ├── receptionist.js      # Receptionist logic
+    │   │   ├── pharmacist.js        # Pharmacist logic
+    │   │   ├── laboratory.js        # Lab scientist logic
+    │   │   ├── cashier.js           # Cashier logic
+    │   │   ├── admin.js             # Admin logic
+    │   │   ├── insurance.js         # Insurance manager logic
+    │   │   ├── dg.js                # Director General logic
+    │   │   ├── dof.js               # Director of Finance logic
+    │   │   └── mohs.js              # MOHS logic
+    │   │
+    │   ├── Shared Components (components/)
+    │   │   ├── viewsession.js       # Session viewer (all clinical roles)
+    │   │   ├── createpatient.js     # Patient registration
+    │   │   ├── createsession.js     # Create medical session
+    │   │   ├── searchpatient.js     # Patient search
+    │   │   ├── hpsessions.js        # Hospital sessions list
+    │   │   ├── patientsqueue.js     # Waiting room queue
+    │   │   ├── servedpatients.js    # Served patients list
+    │   │   ├── staffmyappointments.js # Staff appointments
+    │   │   ├── staffmysessions.js   # Staff sessions
+    │   │   └── sessionpopups.js     # Session-related popups
+    │   │
+    │   ├── Authentication
+    │   │   ├── login.controller.js  # Login logic
+    │   │   ├── signup.controller.js # Registration logic
+    │   │   └── 2fa-auth.js          # 2FA verification
+    │   │
+    │   ├── Core Utilities
+    │   │   ├── nav.js               # Navigation & notifications
+    │   │   ├── socket.js            # WebSocket client
+    │   │   ├── config.js            # App configuration
+    │   │   ├── constants.js         # Constants
+    │   │   └── footer.js            # Footer component
+    │   │
+    │   └── Admin-Specific
+    │       ├── admin-employees-list.js
+    │       ├── admin-medicines-list.js
+    │       ├── admin-tests-list.js
+    │       └── ... (admin list pages)
+    │
+    ├── css/
+    │   └── styling.css          # Main stylesheet
+    │
+    ├── img/                     # Images
+    ├── svg/                     # SVG icons
+    ├── vendor/                  # Third-party libraries
+    ├── uploads/                 # User-uploaded files
+    └── json/                    # JSON data files
 ```
+
+### Role-Based File Mapping
+
+| User Role | HTML Page | JavaScript File | Key Features |
+|-----------|-----------|-----------------|--------------|
+| **Patient** | `patient-index.html` | `patient.js` | View sessions, appointments, medical records |
+| **Healthcare Provider** | `hcp-index.html` | `hc_provider.js` | Create sessions, diagnose, prescribe, view analytics |
+| **Receptionist** | `receptionist-index.html` | `receptionist.js` | Register patients, create sessions, manage queue |
+| **Pharmacist** | `pharmacist-index.html` | `pharmacist.js` | Dispense medications, manage inventory |
+| **Laboratory Scientist** | `laboratory-index.html` | `laboratory.js` | Record test results, manage lab queue |
+| **Cashier** | `cashier-index.html` | `cashier.js` | Process payments, generate receipts |
+| **Admin** | `admin-index.html` | `admin.js` | Manage users, departments, catalogs |
+| **Insurance Manager** | `insurance-index.html` | `insurance.js` | Manage insurance claims, approvals |
+| **Director General** | `dg-index.html` | `dg.js` | View hospital analytics, reports |
+| **Director of Finance** | `dof-index.html` | `dof.js` | Financial reports, budget management |
+| **MOHS** | `mohs-index.html` | `mohs.js` | National health statistics, compliance |
+
+---
+
+### Detailed Role Descriptions & Workflows
+
+#### 1. **Patient Portal** (`patient.js` + `patient-index.html`)
+
+**Purpose:** Self-service portal for patients to manage their healthcare
+
+**Key Features:**
+- **View Medical Sessions:** Complete session history with diagnoses, prescriptions, test results
+- **Appointments:** Schedule, view, and cancel appointments
+- **Medical Records:** Access lab results, imaging reports, discharge summaries
+- **Prescriptions:** View active medications and refill history
+- **Notifications:** Appointment reminders, test results ready, session updates
+- **Profile Management:** Update contact info, emergency contacts, insurance details
+- **Document Uploads:** Share medical history documents with providers
+
+**Main UI Components:**
+```javascript
+// From patient.js
+- My Sessions (view all medical visits)
+- My Appointments (upcoming/past)
+- My Medications (active prescriptions)
+- My Test Results (lab/imaging)
+- Profile Settings
+- Notification Preferences
+```
+
+**Typical Patient Journey:**
+```
+1. Login → Dashboard
+2. View notification: "Test results ready"
+3. Navigate to "My Sessions"
+4. Click on recent session
+5. View complete medical record:
+   - Doctor's notes
+   - Diagnosis
+   - Lab results
+   - Prescriptions
+6. Download/Print session report
+7. Schedule follow-up appointment
+```
+
+---
+
+#### 2. **Healthcare Provider (HCP)** (`hc_provider.js` + `hcp-index.html`)
+
+**Purpose:** Clinical workstation for doctors, nurses, and medical officers
+
+**Key Features:**
+- **Patient Queue:** View waiting patients, prioritize urgent cases
+- **Create Sessions:** Start new medical consultations
+- **Session Management:**
+  - Record symptoms and vital signs
+  - Perform physical examination
+  - Request diagnostic tests (lab, imaging)
+  - Prescribe medications
+  - Add procedures/operations
+  - Record diagnoses (with ICD-11 codes)
+  - Use NEXUN AI for clinical decision support
+  - Add progress notes
+  - Close/discharge sessions
+- **Analytics Dashboard:**
+  - Today's patients count
+  - Common diagnoses (charts)
+  - Patient demographics
+  - Session trends
+- **Appointments:** View scheduled appointments
+- **My Sessions:** Track sessions assigned to me
+- **Transfer Patients:** Internal (to another HCP) or external (to another facility)
+
+**Shared Components Used:**
+- `viewsession.js` - View/edit complete session data
+- `createsession.js` - Create new medical session
+- `patientsqueue.js` - Waiting room management
+- `searchpatient.js` - Find existing patients
+- `hpsessions.js` - List of all hospital sessions
+- `staffmyappointments.js` - Personal appointments
+- `staffmysessions.js` - Sessions assigned to me
+
+**NEXUN AI Integration:**
+```javascript
+// HCP can invoke AI assistant during session
+1. Record patient symptoms and vitals
+2. Click "Ask NEXUN" button
+3. AI analyzes:
+   - Patient history
+   - Current symptoms
+   - Vital signs
+   - Uploaded documents/images
+4. Receive AI recommendations:
+   - Differential diagnoses (ranked)
+   - Recommended tests
+   - Medication suggestions
+   - Red flag warnings
+5. Review and make clinical decision
+6. Save AI report to session
+```
+
+**Typical HCP Workflow:**
+```
+1. Login → Dashboard
+2. View patient queue (10 waiting)
+3. Select next patient
+4. Create/Open session
+5. Record:
+   - Chief complaint: "Fever, cough, difficulty breathing"
+   - Vital signs: Temp 38.5°C, SpO2 92%, BP 130/80
+   - Physical exam: Crackles in lower lungs
+6. Ask NEXUN for assistance
+7. Review AI suggestions:
+   - Likely: Community-acquired pneumonia
+   - Consider: COVID-19, TB
+   - Recommended: Chest X-ray, CBC, COVID test
+8. Order tests:
+   - Chest X-ray
+   - Complete Blood Count
+   - COVID-19 PCR
+9. Prescribe medications:
+   - Amoxicillin 500mg TID x 7 days
+   - Paracetamol 500mg PRN
+10. Add diagnosis: J18.9 (Pneumonia)
+11. Save and mark session as "Pending Tests"
+12. Move to next patient
+```
+
+---
+
+#### 3. **Receptionist** (`receptionist.js` + `receptionist-index.html`)
+
+**Purpose:** Front desk operations, patient registration, and session initialization
+
+**Key Features:**
+- **Register New Patients:**
+  - Capture demographics (name, ID, DOB, gender)
+  - Contact information (phone, email, address)
+  - Insurance details
+  - Biometric registration (fingerprint)
+  - Emergency contacts
+- **Search Patients:** Find existing patients by ID, name, phone
+- **Create Sessions:** Initiate medical consultations for walk-in patients
+- **Patient Queue Management:** View and organize waiting patients
+- **Appointments:** Schedule patient appointments with specific HCPs
+- **Payment Processing:** Collect consultation fees
+- **Session Assignment:** Assign patients to available doctors
+- **Patient Check-in:** Mark appointments as checked-in
+
+**Shared Components Used:**
+- `createpatient.js` - Patient registration form
+- `searchpatient.js` - Patient search
+- `createsession2.js` - Session creation (receptionist version)
+- `viewsession.js` - View session details (limited access)
+- `servedpatients.js` - List of served patients
+- `hpsessions2.js` - Hospital sessions (receptionist view)
+
+**Typical Receptionist Workflow:**
+```
+1. Login → Dashboard
+2. Patient arrives at reception
+3. Search patient by National ID
+4. If not found:
+   - Click "Register New Patient"
+   - Enter demographics
+   - Capture fingerprint
+   - Assign insurance
+   - Save patient record
+5. Create new session:
+   - Select patient
+   - Choose session type (consultation/emergency/follow-up)
+   - Select patient type (outpatient/inpatient)
+   - Assign to available HCP
+   - Collect consultation fee
+   - Print receipt
+6. Patient moves to waiting area
+7. Repeat for next patient
+```
+
+---
+
+#### 4. **Pharmacist** (`pharmacist.js` + `pharmacist-index.html`)
+
+**Purpose:** Medication dispensing and pharmacy inventory management
+
+**Key Features:**
+- **Prescription Queue:** View patients with active prescriptions
+- **Dispense Medications:**
+  - View prescribed medications
+  - Check drug availability
+  - Mark medications as dispensed (bulk or individual)
+  - Update inventory automatically
+  - Print medication labels
+- **Inventory Management:**
+  - View stock levels
+  - Low stock alerts
+  - Request medication restocking
+- **Medication History:** View patient's medication history for interaction checks
+- **Session View:** Limited access to view prescriptions only
+
+**Shared Components Used:**
+- `viewsession.js` - View session (medications section only)
+- Custom dispensing modals
+
+**Typical Pharmacist Workflow:**
+```
+1. Login → Dashboard
+2. View prescription queue (15 pending)
+3. Select patient session
+4. Review prescribed medications:
+   - Amoxicillin 500mg - 21 tablets
+   - Paracetamol 500mg - 30 tablets
+5. Check inventory:
+   - Amoxicillin: 500 in stock ✓
+   - Paracetamol: 1000 in stock ✓
+6. Dispense medications:
+   - Mark each as "Dispensed"
+   - Print medication labels with instructions
+7. Update inventory automatically
+8. Provide counseling to patient
+9. Mark session as "Medications Dispensed"
+10. Move to next patient
+```
+
+---
+
+#### 5. **Laboratory Scientist** (`laboratory.js` + `laboratory-index.html`)
+
+**Purpose:** Perform diagnostic tests and record results
+
+**Key Features:**
+- **Test Queue:** View pending laboratory tests
+- **Test Forms:** Fill specialized test forms (CBC, Urinalysis, etc.)
+- **Record Results:**
+  - Enter test results (numeric, text, images)
+  - Upload result documents/images
+  - Mark tests as complete
+  - Flag abnormal results
+- **Test Priority:** Identify urgent/STAT tests
+- **Session View:** Limited access to view test orders only
+- **Notifications:** Notify HCP when results are ready
+
+**Shared Components Used:**
+- `viewsession.js` - View session (tests section only)
+- Test result entry forms
+
+**Typical Lab Scientist Workflow:**
+```
+1. Login → Dashboard
+2. View test queue:
+   - 3 STAT (urgent) tests
+   - 12 routine tests
+3. Prioritize STAT tests
+4. Select patient session
+5. View ordered tests:
+   - Complete Blood Count (CBC)
+   - Blood Culture
+6. Perform tests using lab equipment
+7. Record results:
+   - WBC: 15,000 cells/μL (High) 🔴
+   - Hemoglobin: 12.5 g/dL (Normal)
+   - Platelets: 250,000/μL (Normal)
+8. Upload result PDF
+9. Mark test as "Completed"
+10. System sends notification to HCP
+11. Move to next test
+```
+
+---
+
+#### 6. **Cashier** (`cashier.js` + `cashier-index.html`)
+
+**Purpose:** Billing, payment processing, and financial transactions
+
+**Key Features:**
+- **Payment Queue:** View sessions awaiting payment
+- **Process Payments:**
+  - View itemized bill (consultation, tests, medicines, procedures)
+  - Apply insurance coverage
+  - Calculate patient balance
+  - Accept payment (cash, card, mobile money)
+  - Generate receipts
+- **Payment Approval:** Approve payment requests
+- **Session Closure:** Close sessions after payment
+- **Financial Reports:**
+  - Daily collections
+  - Payment methods breakdown
+  - Outstanding balances
+- **Invoice Generation:** Print/export invoices
+
+**Shared Components Used:**
+- `viewsession.js` - View session (payment section only)
+- Payment popup modals
+
+**Typical Cashier Workflow:**
+```
+1. Login → Dashboard
+2. Patient arrives with completed session
+3. Search/Select patient session
+4. View bill summary:
+   - Consultation fee: 10,000 RWF
+   - Lab tests (CBC, X-ray): 15,000 RWF
+   - Medications: 8,000 RWF
+   - Total: 33,000 RWF
+5. Check insurance coverage:
+   - Insurance pays: 80% = 26,400 RWF
+   - Patient pays: 20% = 6,600 RWF
+6. Collect payment:
+   - Method: Mobile Money (MTN)
+   - Amount: 6,600 RWF
+7. Generate receipt
+8. Mark session as "Paid"
+9. Close session
+10. Patient can now leave
+```
+
+---
+
+#### 7. **Admin** (`admin.js` + `admin-*.html`)
+
+**Purpose:** System administration and master data management
+
+**Key Features:**
+- **User Management:**
+  - Add employees (doctors, nurses, staff)
+  - Assign roles and permissions
+  - Manage departments
+  - Deactivate users
+- **Catalog Management:**
+  - **Medicines:** Add/edit medication catalog
+  - **Tests:** Define available lab tests and prices
+  - **Services:** Medical services offered
+  - **Equipment:** Medical consumables/equipment
+  - **Operations:** Surgical procedures catalog
+  - **Diseases:** ICD-11 disease codes
+  - **Insurance Companies:** Manage insurance providers
+- **Location Management:**
+  - Provinces, Districts, Sectors, Cells, Villages
+  - Health facility locations
+- **Hospital Settings:**
+  - Hospital profile
+  - Logo upload
+  - Contact information
+  - TIN number
+
+**Admin Pages:**
+- `admin-employees.html` - Staff management
+- `admin-departments.html` - Departments
+- `admin-medicines.html` - Medication catalog
+- `admin-tests.html` - Test catalog
+- `admin-services.html` - Services
+- `admin-equipments.html` - Equipment
+- `admin-operations.html` - Procedures
+- `admin-diseases.html` - Disease codes
+- `admin-assurances.html` - Insurance companies
+- `admin-health-posts.html` - Facilities
+
+**Typical Admin Tasks:**
+```
+1. Add new medication to catalog:
+   - Name: Amoxicillin
+   - Generic: Amoxicillin
+   - Form: Capsule
+   - Strength: 500mg
+   - Price: 500 RWF
+   - Stock: 1000
+   
+2. Add new employee:
+   - Name: Dr. John Smith
+   - Role: Healthcare Provider
+   - Department: Internal Medicine
+   - Email: john@hospital.com
+   - Generate credentials
+   
+3. Configure insurance company:
+   - Name: RAMA
+   - Coverage: 80%
+   - TIN: 123456789
+```
+
+---
+
+#### 8. **Insurance Manager** (`insurance.js` + `insurance-index.html`)
+
+**Purpose:** Manage insurance claims and approvals
+
+**Key Features:**
+- **Claims Dashboard:** View pending insurance claims
+- **Claim Approval:** Review and approve/reject claims
+- **Coverage Verification:** Verify patient insurance status
+- **Payment Tracking:** Track insurance payments
+- **Reports:** Generate insurance utilization reports
+
+---
+
+#### 9. **Director General (DG)** (`dg.js` + `dg-index.html`)
+
+**Purpose:** Hospital-wide analytics and strategic oversight
+
+**Key Features:**
+- **Hospital Analytics:**
+  - Total patients served (daily/weekly/monthly)
+  - Revenue statistics
+  - Department performance
+  - Staff productivity
+  - Common diagnoses trends
+- **Reports:**
+  - Admissions report
+  - Discharge summary
+  - Mortality statistics
+  - Quality indicators
+- **Full Access:** Can view all sessions and patient data
+
+---
+
+#### 10. **Director of Finance (DOF)** (`dof.js` + `dof-index.html`)
+
+**Purpose:** Financial management and reporting
+
+**Key Features:**
+- **Financial Dashboard:**
+  - Revenue by department
+  - Revenue by service type
+  - Payment methods breakdown
+  - Outstanding payments
+- **Budget Management:**
+  - Departmental budgets
+  - Expenditure tracking
+- **Financial Reports:**
+  - Daily/Weekly/Monthly revenue
+  - Profit & loss
+  - Accounts receivable
+
+---
+
+#### 11. **MOHS (Ministry of Health)** (`mohs.js` + `mohs-index.html`)
+
+**Purpose:** National health statistics and compliance monitoring
+
+**Key Features:**
+- **National Statistics:**
+  - Disease prevalence
+  - Vaccination coverage
+  - Facility compliance
+  - Health indicators
+- **Reports:**
+  - Notifiable diseases
+  - Health facility performance
+  - National health trends
+
+---
+
+### Common Shared Components
+
+All roles use these reusable components:
+
+#### **`viewsession.js`** - Session Viewer
+- Comprehensive session data display
+- Role-based section visibility
+- Edit capabilities (based on role)
+- Export to PDF/Print
+- Add comments, files, diagnoses
+- Session status management
+
+#### **`createpatient.js`** - Patient Registration
+- Patient demographics form
+- Validation and error handling
+- Fingerprint capture integration
+- Insurance assignment
+- Search for existing patients
+
+#### **`createsession.js`** - Session Creation
+- Session type selection
+- Patient assignment
+- HCP assignment
+- Insurance selection
+- Initial triage
+
+#### **`searchpatient.js`** - Patient Search
+- Search by ID, name, phone
+- Display patient cards
+- Quick patient selection
+- View patient profile
+
+#### **`hpsessions.js`** - Hospital Sessions List
+- Filterable sessions table
+- Status indicators
+- Quick actions (view, edit, close)
+- Pagination
+
+#### **`patientsqueue.js`** - Waiting Queue
+- Real-time queue updates
+- Priority indicators
+- Patient check-in status
+- Call next patient
+
+---
 
 ### Frontend Request Flow
 
+#### How Pages Are Served
+
+The system uses a combination of routes to serve frontend pages:
+
+```javascript
+// From src/routes/index.route.js
+
+// Serve HTML pages via page controller
+import { page } from '../controllers/page.controller.js';
+
+// Examples:
+router.get('/patient-index.html', page);
+router.get('/hcp-index.html', page);
+router.get('/receptionist-index.html', page);
+// ... (all HTML pages)
+
+// Static assets (CSS, JS, images) served via plugins controller
+import { assets, stylesheet, pluginScripts, uploads } from '../controllers/plugins.controller.js';
+
+router.get('/assets/*', assets);        // JavaScript files
+router.get('/css/*', stylesheet);       // CSS files
+router.get('/uploads/*', uploads);      // User uploads
+```
+
+**File Paths:**
+```
+User Request: http://127.0.0.1:7000/patient-index.html
+Server Response: src/pages/patient-index.html
+
+User Request: http://127.0.0.1:7000/assets/js/patient.js
+Server Response: src/resources/assets/js/patient.js
+
+User Request: http://127.0.0.1:7000/css/styling.css
+Server Response: src/resources/assets/css/styling.css
+```
+
 #### 1. Authentication (Login Example)
 ```javascript
-// admin/asset/js/auth.js
+// src/resources/assets/js/login.controller.js
 
 async function login() {
     const username = document.getElementById('username').value;
@@ -551,8 +1243,18 @@ async function login() {
             localStorage.setItem('role', data.data.role);
             localStorage.setItem('userData', JSON.stringify(data.data));
             
-            // Redirect to dashboard
-            window.location.href = '/admin/dashboard.html';
+            // Redirect based on role
+            const rolePages = {
+                'admin': '/admin-index.html',
+                'hc_provider': '/hcp-index.html',
+                'patient': '/patient-index.html',
+                'pharmacist': '/pharmacist-index.html',
+                'receptionist': '/receptionist-index.html',
+                'laboratory_scientist': '/laboratory-index.html',
+                'cashier': '/cashier-index.html'
+            };
+            
+            window.location.href = rolePages[data.data.role] || '/dashboard.html';
         } else {
             alert(data.message);
         }
@@ -566,8 +1268,9 @@ async function login() {
 
 #### 2. Authenticated API Calls
 ```javascript
-// admin/asset/js/api.js
+// src/resources/assets/js/config.js or nav.js
 
+// Helper function used across all role files
 async function apiCall(endpoint, method = 'GET', body = null) {
     const token = localStorage.getItem('token');
     
@@ -596,13 +1299,15 @@ async function apiCall(endpoint, method = 'GET', body = null) {
     }
 }
 
-// Usage
-const patients = await apiCall('/get-patients/12345', 'GET');
-await apiCall('/add-patient', 'POST', { name, email, phone });
+// Usage in patient.js
+const sessions = await apiCall('/get-user-sessions', 'GET');
+await apiCall('/update-profile', 'POST', { email: 'new@example.com' });
 ```
 
 #### 3. Real-time Updates (Socket.IO)
 ```javascript
+// src/resources/assets/js/socket.js
+
 // Connect to WebSocket server
 const socket = io('http://127.0.0.1:7000', {
     auth: {
@@ -622,6 +1327,98 @@ socket.on('session:updated', (session) => {
 
 // Emit events
 socket.emit('join:room', { roomId: 'hospital-123' });
+```
+
+#### 4. Role-Specific Page Initialization
+
+**Example: Healthcare Provider Page**
+```javascript
+// src/resources/assets/js/hc_provider.js
+
+(async function() {
+    // Get user info from token
+    const userinfo = await getUserInfo();
+    
+    // Check authentication
+    const token = localStorage.getItem('token');
+    if (!token) {
+        window.location.href = '/login.html';
+        return;
+    }
+    
+    // Verify role
+    if (userinfo.role !== 'hc_provider') {
+        alert('Access denied');
+        window.location.href = '/login.html';
+        return;
+    }
+    
+    // Initialize WebSocket
+    await connSocket();
+    
+    // Load dashboard data
+    await loadDashboard();
+    
+    // Set up navigation
+    setupNavigation();
+    
+    // Initialize components
+    initializeComponents();
+})();
+
+// Component initialization
+function initializeComponents() {
+    // Patient queue component
+    const queueBtn = document.getElementById('patient-queue-btn');
+    queueBtn.addEventListener('click', () => {
+        IncomingPatientsPage(); // From components/patientsqueue.js
+    });
+    
+    // Create session component
+    const createBtn = document.getElementById('create-session-btn');
+    createBtn.addEventListener('click', () => {
+        CreateSessionPage(); // From components/createsession.js
+    });
+    
+    // My sessions component
+    const sessionsBtn = document.getElementById('my-sessions-btn');
+    sessionsBtn.addEventListener('click', () => {
+        MySessionsPage(); // From components/staffmysessions.js
+    });
+}
+```
+
+**Example: Patient Page**
+```javascript
+// src/resources/assets/js/patient.js
+
+(async function() {
+    const userinfo = await getUserInfo();
+    const token = localStorage.getItem('token');
+    
+    if (!token || userinfo.role !== 'patient') {
+        window.location.href = '/login.html';
+        return;
+    }
+    
+    // Load patient-specific data
+    await loadMySessions();
+    await loadMyAppointments();
+    await loadMyPrescriptions();
+    
+    // Set up event listeners
+    setupPatientNavigation();
+})();
+
+async function loadMySessions() {
+    const sessions = await apiCall('/get-user-sessions', 'GET');
+    
+    // Display sessions in UI
+    sessions.forEach(session => {
+        const sessionCard = createSessionCard(session);
+        document.getElementById('sessions-container').appendChild(sessionCard);
+    });
+}
 ```
 
 ---
