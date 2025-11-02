@@ -271,6 +271,94 @@ How it's split:
 - Insurance pays: 0 RWF (doesn't cover restricted items)
 - Patient pays: 50 RWF (must pay full amount)
 
+## Understanding the Code Flow
+
+### Main Files and Their Relationships
+
+```
+[Frontend]
+  ↓
+src/resources/assets/js/
+  session.controller.js  (Creates/updates sessions)
+           ↓
+[Backend API Routes]
+  ↓
+src/controllers/
+  patient.session.controller.js  (Main entry point)
+           ↓
+  |–––––––––––––––––|–––––––––––––––|
+  ↓                 ↓               ↓
+calculate.payments   inventory    payment.status
+controller.js      service.js    service.js
+(Splits costs)    (Gets prices)  (Updates status)
+```
+
+### How Functions Work Together
+
+1. **Starting a New Session**:
+   ```
+   session.controller.js (Frontend)
+   → Creates session with items
+   → Sends to backend API
+   → patient.session.controller.js handles request
+   → Calls calculatePayments() for billing
+   → Creates payment record in database
+   ```
+
+2. **Adding Items to Session**:
+   ```
+   session.controller.js (Frontend)
+   → Updates session items
+   → patient.session.controller.js
+   → calculateSessionTotals()
+     → Fetches current prices
+     → Calls calculatePayments()
+     → Updates payment record
+   ```
+
+3. **Processing Payments**:
+   ```
+   payment.controller.js (Frontend)
+   → Sends payment info
+   → processPayment() in backend
+   → Updates payment status
+   → Triggers any notifications
+   ```
+
+### Key Integration Points
+
+1. **Price Updates**:
+   - Inventory service → calculateSessionTotals → payment records
+   - Any price changes automatically flow through this path
+
+2. **Insurance Changes**:
+   - Insurance service → calculatePayments → payment records
+   - Coverage updates affect all future calculations
+
+3. **Status Updates**:
+   - Payment processing → payment status → session status
+   - Status changes can trigger notifications or reports
+
+### Where to Make Changes
+
+This flow helps you understand where to add new features:
+
+1. **New Item Types**:
+   - Add to frontend session controller
+   - Update backend session controller
+   - Modify calculatePayments for new type
+   - Update database schemas
+
+2. **Price Rules**:
+   - Simple rules: Add in calculatePayments
+   - Complex rules: Add in calculateSessionTotals
+   - UI rules: Add in frontend session controller
+
+3. **Payment Processing**:
+   - Payment validation: Add in processPayment
+   - Status logic: Add in payment status service
+   - Notifications: Add in payment controller
+
 ## Quick Guide: Where to Add New Features
 
 1. For quick changes to bill totals:
