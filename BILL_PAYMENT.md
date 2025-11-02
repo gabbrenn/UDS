@@ -1,26 +1,51 @@
-# Billing & Payments – Technical Overview
+# Understanding UDS Billing & Payments
 
-This document explains how patient payments are computed in UDS, the related data and code paths, how to extend or adjust the logic, and common pitfalls to avoid.
+This guide explains how UDS calculates patient bills and handles payments. Whether you're a developer maintaining the system or trying to understand how bills are calculated, this document will help you understand the process step by step.
 
-## High-level flow
+## How Billing Works - Simple Overview
 
-1. A session is created or updated with billable entities (tests, medicines, services, equipments, operations).
-2. The system computes the split between patient and assurance (insurer) using assurance coverage and restriction lists.
-3. A record is inserted in `payments` for the session with the computed totals; follow-up operations update payment status as money is received.
+When a patient receives medical care:
 
-## Key data sources
+1. Every billable item (like medicines, tests, or services) gets added to their session
+2. The system checks their insurance (assurance) coverage:
+   - What percentage the insurance covers (like 90% insurance, 10% patient)
+   - Which items are not covered by insurance (restricted items)
+3. The system creates a bill splitting the total between:
+   - What the patient needs to pay
+   - What the insurance company will pay
 
-- Table `assurances`
-	- `percentage_coverage` – e.g., 90 means insurer covers 90%, patient 10%.
-	- JSON columns of restricted items: `rstctd_medicines`, `rstctd_tests`, `rstctd_operations`, `rstctd_services`, `rstctd_equipments`.
-		- Each is a JSON array of item IDs not covered by the assurance; restricted items are paid 100% by the patient.
+## Understanding the Data
 
-- Session entities (stored in table `medical_history`)
-	- Arrays per entity type: `medicines`, `tests`, `services`, `equipments`, `operations`.
-	- Each item includes at least: `{ id, price, ... }` and may include flags like `servedOut` which excludes the item from patient/assurance computation (see rules below).
+### 1. Insurance (Assurance) Information
+The system stores insurance information including:
+- Coverage percentage (example: 90% means insurance pays 90%, patient pays 10%)
+- Lists of items not covered by insurance, such as:
+  - Restricted medicines
+  - Restricted tests
+  - Restricted operations
+  - Restricted services
+  - Restricted equipment
+  
+These "restricted" items must be paid 100% by the patient, regardless of their insurance coverage.
 
-- Inventories per hospital
-	- Used when recalculating totals to resolve current prices and metadata.
+### 2. Patient Session Data
+When a patient visits, we track:
+- All medicines prescribed
+- Tests performed
+- Medical services provided
+- Equipment used
+- Operations performed
+
+For each item we store:
+- The item ID
+- The price
+- Whether the item has been given to the patient ("served out")
+  - Items marked as "served out" are not included in the bill
+
+### 3. Hospital Price Lists
+Each hospital maintains its own inventory with current prices. These prices are used when:
+- Creating new bills
+- Recalculating existing bills (prices may change over time)
 
 ## Core functions and files
 
@@ -66,172 +91,224 @@ Notes and caveats:
 - Items with `servedOut` are ignored in both totals.
 - Known issue (bug): the mapping for `equipments` uses `rstrct_medicines` instead of `rstrct_equipments`. See “Known issues” for the fix.
 
-### 2) Session creation and payment insertion
+### Creating a New Bill
 
-File: `src/controllers/patient.session.controller.js` (function `addSession`)
+When a new patient session is created (`src/controllers/patient.session.controller.js`), here's what happens:
 
-Relevant steps:
-1. Collect entities: `medicines`, `tests`, `services`, `equipments`, `operations`.
-2. Build `addins` with the entities (after inventory normalization):
-	 ```js
-	 const addins = { medicines, tests, operations, services, equipments };
-	 ```
-3. Compute totals:
-	 ```js
-	 const pts = await calculatePayments(assurance, addins, 'all');
-	 ```
-4. Some flows also compute a `totalPPrice` (e.g., cost of medicines from inventory purchase price) and add it to `pts.patient_amount` before persisting.
-5. Insert into `payments`:
-	 ```sql
-	 insert into payments(id,user,session,amount,assurance_amount,pati_p_amount,status,assu_paym_status,date,assurance,approver,extra)
-	 ```
-	 - `amount` = `pts.patient_amount`
-	 - `assurance_amount` = `pts.assurance_amount`
-	 - `pati_p_amount` = initial patient-paid amount (set to `amount` when action is `create-n-pay`)
-	 - `status` = `'paid'` in `create-n-pay` flow else `'awaiting payment'` (unless assurance covers 100%).
-	 - `assu_paym_status` = `'pending payment'` by default, or `'paid'` if a special case (e.g. full coverage or specific assurance id).
+#### Step 1: Collect All Items
+The system gathers everything that needs to be billed:
+- Medicines prescribed
+- Tests performed
+- Services provided
+- Equipment used
+- Operations performed
 
-### 3) Recalculation for an existing session
+#### Step 2: Calculate the Bill
+1. Get current prices from the hospital's inventory
+2. Calculate how much insurance will pay and how much the patient owes
+3. For medicines, we also track the purchase price (this helps with inventory management)
 
-File: `src/controllers/patient.session.controller.js` (function `calculateSessionTotals`)
+#### Step 3: Create the Payment Record
+The system creates a payment record with:
+- Total amount the patient needs to pay
+- Total amount insurance will pay
+- How much the patient has paid so far
+- Payment status:
+  - "paid" if patient pays immediately
+  - "awaiting payment" if patient will pay later
+  - Insurance status starts as "pending payment"
+  - Sometimes insurance is marked "paid" automatically (like for 100% coverage)
 
-Purpose: Recompute totals for an existing session, using current prices and assurance (or an override).
+### Updating an Existing Bill
 
-Process:
-- Load session, parse the entity arrays.
-- Load inventories per entity for the session’s hospital.
-- Build a fresh `addins` array of items with prices (possibly updated from inventories).
-- Compute totals with `calculatePayments(assuranceId, addins, 'all')`.
-- Add `totalPPrice` (e.g., accumulated purchase prices) to `totals.patient_amount`.
-- Determine a session-level status (e.g., `'partially paid'`, `'paid'`) using existing `payments` row(s) and coverage.
+Sometimes we need to recalculate a bill that was already created. This happens in `calculateSessionTotals` function and here's how it works:
 
-This function is a good place to centralize future business rules that need to be applied across the entire session (discounts, caps, VAT, etc.).
+#### When This Happens
+- When prices in the hospital inventory change
+- When insurance coverage changes
+- When adding new items to an existing session
+- When applying special discounts or adjustments
 
-### 4) Other related endpoints
+#### How It Works
+1. Get the latest information:
+   - All items in the session
+   - Current prices from hospital inventory
+   - Current insurance coverage
 
-- `processPayment`, `approvePayment`, `approveAssuPayment` – update payment records and statuses.
-- `markMedicineAsServed` – toggles serving state for medicines; served items are excluded from the totals in `calculatePayments`.
+2. Recalculate everything:
+   - Calculate new insurance and patient amounts
+   - Include purchase prices for inventory tracking
+   - Update payment status (paid, partially paid, etc.)
 
-## Extending the payment logic
+This is also where we can add special rules like:
+- Discounts for certain patients
+- Maximum out-of-pocket limits
+- Special holiday rates
+- VAT or other taxes
 
-Below are common scenarios and where to change the code.
+### Other Important Functions
 
-### Add a new billable entity type
-1. Schema: add a JSON column `rstctd_<entity>` to `assurances` (e.g., `rstctd_therapies`).
-2. Backend models:
-	 - Include the new entity in session storage (`medical_history`).
-	 - Add inventory retrieval for the new entity.
-3. Calculator:
-	 - Update `calculatePayments` to:
-		 - Parse `rstctd_<entity>` into `restrictedItems.<entity>`.
-		 - Loop the new entity array in `itemGroups`.
-4. UI/API:
-	 - Ensure the entity carries `{ id, price, servedOut? }`.
-	 - Include it in `addins` where totals are computed.
+#### Payment Processing
+We have several functions that handle different parts of the payment process:
+- Processing a payment from a patient
+- Approving an insurance payment
+- Marking medicines as "served" (given to patient)
 
-### Apply discounts, copays, or caps
-- Add a post-processing step after the base split:
-	- Option A: Modify `calculatePayments` to accept an optional policy descriptor and adjust `assurance_amount`/`patient_amount` accordingly.
-	- Option B: Apply adjustments in `calculateSessionTotals` after calling `calculatePayments` (easier to centralize and log policy effects).
-- Examples:
-	- Fixed co-pay: add a per-item or per-session fixed amount to `patient_amount`.
-	- Out-of-pocket cap: clamp `patient_amount` to a max and reassign excess to `assurance_amount`.
+#### Payment Status Changes
+- When a patient makes a payment → Update their payment status
+- When insurance pays → Update insurance payment status
+- When medicine is given to patient → Mark as "served" (won't be billed again)
 
-### Taxes (VAT) or surcharges
-- Compute tax from the split or on gross line-item price, depending on policy.
-- Prefer applying in `calculateSessionTotals` to keep the base calculator simple and reusable.
+## Adding New Features
 
-### Rounding rules
-- Decide whether to round per-item or at the session aggregate.
-- Implement consistent rounding (e.g., to the nearest RWF) right before persisting totals.
+Here are common scenarios and how to implement them:
 
-## Known issues and recommendations
+### Adding a New Type of Billable Item
+Let's say you want to add "therapy sessions" as a new billable item:
 
-1) Equipment restriction mapping
-- In `calculate.payments.controller.js`, `restrictedItems` for `equipments` is incorrectly sourced from `rstrct_medicines`:
+1. Add to Insurance System:
+   - Add a new list for restricted therapy sessions
+   - This lets insurance companies specify which therapies they don't cover
+
+2. Update Patient Records:
+   - Add therapy sessions to patient history
+   - Track prices in hospital inventory
+
+3. Update Bill Calculator:
+   - Make it check insurance coverage for therapy sessions
+   - Include therapy costs in bill calculations
+
+4. Update User Interface:
+   - Add fields to enter therapy information
+   - Show therapy costs in bills
+
+### Adding Special Pricing Rules
+
+#### Discounts and Copays
+You can add special pricing rules in two ways:
+
+1. In the main calculator:
+   - Add rules that affect how costs are split between patient and insurance
+   - Good for simple discounts that apply everywhere
+
+2. In the bill recalculation:
+   - Add rules after the basic calculation
+   - Better for complex rules that need extra information
+   - Easier to track and log changes
+
+Examples:
+- Fixed copay: Patient pays 2000 RWF for each medicine
+- Maximum limit: Patient never pays more than 50,000 RWF total
+- Senior discount: 10% off for patients over 65
+
+#### Adding Taxes
+When adding VAT or other taxes:
+1. Calculate the basic split between patient and insurance
+2. Add taxes afterward in the bill recalculation
+This keeps the basic calculator simple and makes tax calculations easier to track
+
+#### Rounding Numbers
+Important decisions:
+- Round each item separately? Or round the final total?
+- Always round to nearest RWF
+- Apply rounding just before saving the final bill
+
+## Known Issues to Watch Out For
+
+### 1. Equipment Insurance Coverage Bug
+There's a bug in how equipment coverage is checked. The system is looking at the wrong restriction list:
 
 ```js
+// In calculate.payments.controller.js
 restrictedItems = {
-	medicines: assuranceInfo.rstrct_medicines,
-	tests: assuranceInfo.rstrct_tests,
-	operations: assuranceInfo.rstrct_operations,
-	equipments: assuranceInfo.rstrct_medicines, // BUG: should be rstrct_equipments
-	services: assuranceInfo.rstrct_services,
+    medicines: assuranceInfo.rstrct_medicines,
+    tests: assuranceInfo.rstrct_tests,
+    operations: assuranceInfo.rstrct_operations,
+    equipments: assuranceInfo.rstrct_medicines,  // BUG: Using medicines list instead of equipment list!
+    services: assuranceInfo.rstrct_services,
 }
 ```
 
-Fix:
-
+How to fix it:
 ```js
-equipments: assuranceInfo.rstrct_equipments,
+equipments: assuranceInfo.rstrct_equipments,  // Use the correct equipment list
 ```
 
-2) Result on falsy `type`
-- `calculatePayments` only returns a sum when `type` is truthy. If you need the function to return totals by default, add a default truthy value or adjust callers.
+### 2. Payment Calculation Type Parameter
+When calling the payment calculator:
+- You must pass a "type" parameter (like 'all' or 'type')
+- If you don't, it returns nothing
+- To fix this in your code, always pass 'all' as the type
 
-3) Query shape
-- The calculator loads assurance JSON lists via a `SELECT` with multiple LEFT JOINs and `JSON_CONTAINS` filters, then `GROUP BY assurances.id`.
-- You can simplify this to a single-row `SELECT` from `assurances` by `id` and parse the JSON arrays directly, since coverage and restriction arrays are properties of the assurance, not of individual joined rows.
+### 3. Database Query Improvement
+Current situation:
+- System makes complex database queries to get insurance information
+- Uses multiple table joins which can be slow
 
-## Examples
+Suggested improvement:
+- Just get the insurance record directly
+- Parse the restriction lists from that record
+- This would be faster and simpler
 
-### Example 1: Standard split
+## Real-World Examples
 
-Input:
+### Example 1: Basic Insurance Coverage
+A patient with 80% insurance coverage gets:
+- A test costing 200 RWF
+- Medicine costing 50 RWF
+- Total bill = 250 RWF
 
-```js
-assuranceId = 123;
-itemGroups = {
-	tests: [{ id: 10, price: 200 }],
-	medicines: [{ id: 99, price: 50 }]
-};
-coverage = 80; // from assurances
-restricted lists = all empty
-```
+How it's split:
+- Insurance pays: 80% of 250 = 200 RWF
+- Patient pays: 20% of 250 = 50 RWF
 
-Output:
+### Example 2: Restricted Medicine
+Same patient (80% coverage) gets:
+- Medicine that costs 50 RWF
+- But this medicine is on the insurance's restricted list
 
-```js
-{
-	assurance_amount: 0.8 * (200 + 50) = 200,
-	patient_amount:   0.2 * (200 + 50) = 50
-}
-```
+How it's split:
+- Insurance pays: 0 RWF (doesn't cover restricted items)
+- Patient pays: 50 RWF (must pay full amount)
 
-### Example 2: Restricted medicine
+## Quick Guide: Where to Add New Features
 
-Input:
+1. For quick changes to bill totals:
+   - Add them in `calculateSessionTotals`
+   - Good for discounts, special offers, seasonal adjustments
 
-```js
-restricted.medicines = [99]
-itemGroups.medicines = [{ id: 99, price: 50 }]
-coverage = 80
-```
+2. For changes to how costs are split:
+   - Add them in `calculatePayments`
+   - Good for new insurance rules or coverage types
 
-Output:
+3. For changes to payment processing:
+   - Add them in payment approval functions
+   - Good for adding receipts, notifications, or audit logs
 
-```js
-{
-	assurance_amount: 0,      // insurer does not cover restricted items
-	patient_amount:   50
-}
-```
+## Testing Your Changes
 
-## Where to plug in new features
+Before deploying changes, check these scenarios:
 
-- Quick adjustments to totals: `calculateSessionTotals` (centralized, safe for cross-entity rules).
-- Deep per-item logic: `calculatePayments` (when the rule affects the base split and/or restricted logic).
-- Payment status transitions: `processPayment`, `approvePayment`, `approveAssuPayment` (e.g., add audit logs, receipts, notifications).
+✅ Patient with no insurance
+- Should pay 100% of all costs
 
-## Testing checklist
+✅ Patient with partial insurance
+- Costs should split correctly by percentage
 
-- No-assurance path: All items billed to patient.
-- Partial coverage: Correct split by coverage percent.
-- 100% coverage: Patient share should be 0 unless restricted.
-- Restricted items: Billed entirely to patient.
-- `servedOut` items: Excluded.
-- Recalculation: `calculateSessionTotals` reflects inventory price updates and policy adjustments.
-- Status transitions: Verify session status updates when patient or assurance payments are approved.
+✅ Patient with full coverage
+- Should pay nothing (unless items are restricted)
+
+✅ Restricted items
+- Patient should pay 100%
+
+✅ Items marked as "served out"
+- Should not appear in bill
+
+✅ Changing prices
+- Bills should update with new prices
+
+✅ Payment status
+- Should update correctly when payments are made
 
 ---
 
